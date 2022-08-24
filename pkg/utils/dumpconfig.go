@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var configPath = "/etc/kubesphere/kubesphere.yaml"
+var configPath = "/Users/lihui/go/src/github.com/kubesphere/openpitrix-jobs/kubesphere.yaml"
 
 func DumpConfig() {
 	f, err := os.Open(configPath)

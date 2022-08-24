@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
+	"io/ioutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 	"strings"
 )
 
@@ -29,13 +30,7 @@ var (
 	InvalidScheme = errors.New("invalid scheme")
 )
 
-const (
-	// DefaultConfigurationPath the default location of the configuration file
-	defaultConfigurationPath = "/root/kubesphere"
-)
-
 func newImportCmd() *cobra.Command {
-
 	cmd := &cobra.Command{
 		Use:   "import",
 		Short: "import app",
@@ -219,14 +214,15 @@ func (wf *ImportWorkFlow) CreateApp(ctx context.Context, chrt *chart.Chart) (app
 		label[constants.CategoryIdLabelKey] = ctg.Name
 	}
 
+	anno := wf.importConfig.GetExtraAnnotations(chrt)
+	anno[constants.CreatorAnnotationKey] = "admin"
+
 	// create helm application
 	app = &v1alpha1.HelmApplication{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   appId,
-			Labels: label,
-			Annotations: map[string]string{
-				constants.CreatorAnnotationKey: "admin",
-			},
+			Name:        appId,
+			Labels:      label,
+			Annotations: anno,
 		},
 		Spec: v1alpha1.HelmApplicationSpec{
 			Name:        wf.importConfig.ReplaceAppName(chrt),
@@ -436,6 +432,16 @@ type ImportConfig struct {
 	// map category name to icon
 	CategoryIcon   map[string]string `yaml:"categoryIcon"`
 	AppNameReplace map[string]string `yaml:"appNameReplace"`
+	// Extra annotations add to a specific chart.
+	ExtraAnnotations map[string]map[string]string `yaml:"extraAnnotations"`
+}
+
+func (ic *ImportConfig) GetExtraAnnotations(chrt *chart.Chart) map[string]string {
+	if anno, exists := ic.ExtraAnnotations[chrt.Name()]; exists {
+		return anno
+	} else {
+		return map[string]string{}
+	}
 }
 
 func (ic *ImportConfig) ReplaceAppName(chrt *chart.Chart) string {
@@ -461,23 +467,15 @@ func (ic *ImportConfig) GetIcon(ctg string) string {
 }
 
 func tryLoadImportConfig() (*ImportConfig, error) {
-	viper.SetConfigName("import-config")
-	viper.AddConfigPath(defaultConfigurationPath)
-
-	// Load from current working directory, only used for debugging
-	viper.AddConfigPath(".")
-
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			return nil, err
-		} else {
-			return nil, fmt.Errorf("error parsing configuration file %s", err)
-		}
+	b, err := ioutil.ReadFile(path.Join(".", "import-config.yaml"))
+	if err != nil {
+		klog.Errorf("load import-config.yaml failed")
+		return nil, err
 	}
 
 	conf := &ImportConfig{}
 
-	if err := viper.Unmarshal(conf); err != nil {
+	if err := yaml.Unmarshal(b, conf); err != nil {
 		return nil, err
 	}
 

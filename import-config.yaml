@@ -25,3 +25,6 @@ appNameReplace:
   "rabbitmq": "RabbitMQ"
   "redis": "Redis"
   "radondb-mysql": "RadonDB MySQL"
+extraAnnotations:
+  "springcloud-controller":
+    'app.kubesphere.io/license': "springcloud"
